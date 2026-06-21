@@ -1,34 +1,62 @@
-name: Angular Build
-
+name: Build and Publish to Nexus
 
 on:
   push:
+    branches: [master, main]
   pull_request:
-   
+    branches: [master, main]
   workflow_dispatch:
+
 jobs:
-  build:
+  build-and-publish:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: 16
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+          cache: 'npm'
 
-    - name: Install dependencies
-      run: npm install
-      working-directory: RentA-Car-FrontEnd-Angular
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Build Angular app
-      run: npm run build
-      working-directory: RentA-Car-FrontEnd-Angular
+      - name: Build Angular app (production)
+        run: npm run build -- --configuration production
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: angular-build
-        path: RentA-Car-FrontEnd-Angular
+      - name: Create distribution archive
+        run: |
+          cd dist/RentACar-FrontEnd
+          zip -r ../../app-build-${{ github.run_number }}.zip .
+          cd ../../
+          echo "Archive created: app-build-${{ github.run_number }}.zip"
+          ls -lh app-build-${{ github.run_number }}.zip
+
+      # - name: Upload to Nexus Repository
+      #   env:
+      #     NEXUS_URL: ${{ secrets.NEXUS_URL }}
+      #     NEXUS_REPO: ${{ secrets.NEXUS_REPO }}
+      #     NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
+      #     NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+      #   run: |
+      #     ARTIFACT="app-build-${{ github.run_number }}.zip"
+      #     UPLOAD_URL="${NEXUS_URL}/repository/${NEXUS_REPO}/${ARTIFACT}"
+          
+      #     echo "Uploading $ARTIFACT to Nexus..."
+      #     curl -v --fail -u "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" \
+      #       -H "Content-Type: application/zip" \
+      #       --upload-file "${ARTIFACT}" \
+      #       "${UPLOAD_URL}"
+          
+      #     echo "Upload successful!"
+
+      # - name: Upload artifact to GitHub
+      #   if: always()
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: app-build-${{ github.run_number }}
+      #     path: app-build-${{ github.run_number }}.zip
+      #     retention-days: 30
