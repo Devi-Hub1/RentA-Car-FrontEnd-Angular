@@ -1,11 +1,15 @@
+# ...existing code...
 name: Build and Publish to Nexus
 
 on:
   push:
-    branches: [master, main]
+    branches: [ main, master ]
   pull_request:
-    branches: [master, main]
+    branches: [ main, master ]
   workflow_dispatch:
+
+env:
+  PROJECT_DIR: '.'   # set to './subfolder' if your package.json/angular.json are in a subfolder
 
 jobs:
   build-and-publish:
@@ -22,33 +26,25 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
-        working-directory: RentA-Car-FrontEnd-Angular
-
-      - name: Build Angular app
-        run: npm run build --prod
-        working-directory: RentA-Car-FrontEnd-Angular
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          node-version: '16'
-          cache: 'npm'
-      - name: Install dependencies
         run: npm ci
-        working-directory: RentA-Car-FrontEnd-Angular
-   
+        working-directory: ${{ env.PROJECT_DIR }}
+
       - name: Build Angular app
         run: npm run build -- --configuration production
-        working-directory: RentA-Car-FrontEnd-Angular
+        working-directory: ${{ env.PROJECT_DIR }}
 
       - name: Create ZIP of dist
         run: |
           sudo apt-get update && sudo apt-get install -y zip
-          ZIP_NAME=rentacar-frontend-${{ github.run_number }}.zip
-          cd RentA-Car-FrontEnd-Angular
-          zip -r "$GITHUB_WORKSPACE/$ZIP_NAME" dist
-          ls -lh "$GITHUB_WORKSPACE/$ZIP_NAME"
+          ZIP_NAME=angular-dist-${{ github.run_number }}.zip
+          DIST_DIR=$(ls -d ${GITHUB_WORKSPACE}/${{ env.PROJECT_DIR }}/dist/* | head -n1 || true)
+          if [ -z "$DIST_DIR" ]; then
+            echo "Error: dist output not found under ${{ env.PROJECT_DIR }}/dist"
+            exit 1
+          fi
+          cd "${DIST_DIR}"
+          zip -r "$GITHUB_WORKSPACE/$ZIP_NAME" . 
+          echo "$ZIP_NAME created at $GITHUB_WORKSPACE/$ZIP_NAME"
         shell: bash
 
       - name: Upload ZIP to Nexus
@@ -57,17 +53,22 @@ jobs:
           NEXUS_REPO: ${{ secrets.NEXUS_REPO }}
           NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
-          ZIP_NAME: rentacar-frontend-${{ github.run_number }}.zip
         run: |
-          set -e
-          FILE_PATH="${GITHUB_WORKSPACE}/${ZIP_NAME}"
-          echo "Uploading ${FILE_PATH} to ${NEXUS_URL}/repository/${NEXUS_REPO}/${ZIP_NAME}"
+          ZIP_NAME=angular-dist-${{ github.run_number }}.zip
+          FILE="${GITHUB_WORKSPACE}/${ZIP_NAME}"
+          if [ ! -f "$FILE" ]; then
+            echo "Artifact $FILE not found"
+            exit 1
+          fi
+          echo "Uploading $FILE to ${NEXUS_URL}/repository/${NEXUS_REPO}/${ZIP_NAME}"
           curl --fail --show-error -u "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" \
-            --upload-file "${FILE_PATH}" \
+            --upload-file "${FILE}" \
             "${NEXUS_URL}/repository/${NEXUS_REPO}/${ZIP_NAME}"
+        shell: bash
 
       - name: Upload artifact to Actions (backup)
         uses: actions/upload-artifact@v4
         with:
           name: angular-build
-          path: ${{ github.workspace }}/rentacar-frontend-${{ github.run_number }}.zip
+          path: angular-dist-${{ github.run_number }}.zip
+# ...existing code...
