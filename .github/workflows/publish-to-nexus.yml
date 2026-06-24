@@ -1,4 +1,3 @@
-# ...existing code...
 name: Build and Publish to Nexus
 
 on:
@@ -9,7 +8,9 @@ on:
   workflow_dispatch:
 
 env:
-  PROJECT_DIR: '.'   # set to './subfolder' if your package.json/angular.json are in a subfolder
+  # Set to the folder that contains package.json / angular.json if not repo root.
+  # Example: './RentA-Car-FrontEnd-Angular' if the project is in that subfolder.
+  PROJECT_DIR: '.'
 
 jobs:
   build-and-publish:
@@ -25,26 +26,31 @@ jobs:
           node-version: '16'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
-        working-directory: ${{ env.PROJECT_DIR }}
+      - name: Install dependencies (ci then fallback to install)
+        run: |
+          set -e
+          cd "${{ env.PROJECT_DIR }}"
+          npm ci || npm install --no-audit --no-fund
+        shell: bash
 
       - name: Build Angular app
-        run: npm run build -- --configuration production
-        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          cd "${{ env.PROJECT_DIR }}"
+          npm run build -- --configuration production
+        shell: bash
 
       - name: Create ZIP of dist
         run: |
           sudo apt-get update && sudo apt-get install -y zip
-          ZIP_NAME=angular-dist-${{ github.run_number }}.zip
-          DIST_DIR=$(ls -d ${GITHUB_WORKSPACE}/${{ env.PROJECT_DIR }}/dist/* | head -n1 || true)
+          DIST_DIR=$(ls -d "${GITHUB_WORKSPACE}/${{ env.PROJECT_DIR }}/dist/"* 2>/dev/null | head -n1 || true)
           if [ -z "$DIST_DIR" ]; then
-            echo "Error: dist output not found under ${{ env.PROJECT_DIR }}/dist"
+            echo "dist output not found in ${{ env.PROJECT_DIR }}/dist"
             exit 1
           fi
-          cd "${DIST_DIR}"
-          zip -r "$GITHUB_WORKSPACE/$ZIP_NAME" . 
-          echo "$ZIP_NAME created at $GITHUB_WORKSPACE/$ZIP_NAME"
+          ZIP_NAME=angular-dist-${{ github.run_number }}.zip
+          cd "$DIST_DIR"
+          zip -r "$GITHUB_WORKSPACE/$ZIP_NAME" .
+          echo "$ZIP_NAME created"
         shell: bash
 
       - name: Upload ZIP to Nexus
@@ -57,10 +63,8 @@ jobs:
           ZIP_NAME=angular-dist-${{ github.run_number }}.zip
           FILE="${GITHUB_WORKSPACE}/${ZIP_NAME}"
           if [ ! -f "$FILE" ]; then
-            echo "Artifact $FILE not found"
-            exit 1
+            echo "Artifact $FILE not found"; exit 1
           fi
-          echo "Uploading $FILE to ${NEXUS_URL}/repository/${NEXUS_REPO}/${ZIP_NAME}"
           curl --fail --show-error -u "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" \
             --upload-file "${FILE}" \
             "${NEXUS_URL}/repository/${NEXUS_REPO}/${ZIP_NAME}"
@@ -71,4 +75,3 @@ jobs:
         with:
           name: angular-build
           path: angular-dist-${{ github.run_number }}.zip
-# ...existing code...
