@@ -30,14 +30,44 @@ jobs:
         working-directory: RentA-Car-FrontEnd-Angular
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: angular-build
-          path: RentA-Car-FrontEnd-Angular/dist/**/*
+          node-version: '16'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+        working-directory: RentA-Car-FrontEnd-Angular
+   
+      - name: Build Angular app
+        run: npm run build -- --configuration production
+        working-directory: RentA-Car-FrontEnd-Angular
 
-      - name: Publish to Nexus
+      - name: Create ZIP of dist
         run: |
-          curl -v -u $NEXUS_USERNAME:$NEXUS_PASSWORD --upload-file RentA-Car-FrontEnd-Angular/dist/<your-artifact-file> http://<your-nexus-repo-url>/<your-repo-path>
+          sudo apt-get update && sudo apt-get install -y zip
+          ZIP_NAME=rentacar-frontend-${{ github.run_number }}.zip
+          cd RentA-Car-FrontEnd-Angular
+          zip -r "$GITHUB_WORKSPACE/$ZIP_NAME" dist
+          ls -lh "$GITHUB_WORKSPACE/$ZIP_NAME"
+        shell: bash
+
+      - name: Upload ZIP to Nexus
         env:
+          NEXUS_URL: ${{ secrets.NEXUS_URL }}
+          NEXUS_REPO: ${{ secrets.NEXUS_REPO }}
           NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+          ZIP_NAME: rentacar-frontend-${{ github.run_number }}.zip
+        run: |
+          set -e
+          FILE_PATH="${GITHUB_WORKSPACE}/${ZIP_NAME}"
+          echo "Uploading ${FILE_PATH} to ${NEXUS_URL}/repository/${NEXUS_REPO}/${ZIP_NAME}"
+          curl --fail --show-error -u "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" \
+            --upload-file "${FILE_PATH}" \
+            "${NEXUS_URL}/repository/${NEXUS_REPO}/${ZIP_NAME}"
+
+      - name: Upload artifact to Actions (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: angular-build
+          path: ${{ github.workspace }}/rentacar-frontend-${{ github.run_number }}.zip
